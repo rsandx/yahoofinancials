@@ -171,10 +171,9 @@ class YahooFinanceETL(object):
     # Private static method to determine if a numerical value is in the data object being cleaned
     @staticmethod
     def _determine_numeric_value(value_dict):
-        if 'raw' in value_dict.keys():
+        numerical_val = None
+        if type(value_dict) is dict and 'raw' in value_dict.keys():
             numerical_val = value_dict['raw']
-        else:
-            numerical_val = None
         return numerical_val
 
     # Private method to format date serial string to readable format and vice versa
@@ -392,8 +391,11 @@ class YahooFinanceETL(object):
 
     # Private Method to take scrapped data and build a data dictionary with
     def _create_dict_ent(self, up_ticker, statement_type, tech_type, report_name, hist_obj):
-        YAHOO_URL = self._BASE_YAHOO_URL + up_ticker + '/' + self.YAHOO_FINANCIAL_TYPES[statement_type][0] + '?p=' +\
-                    up_ticker
+        if statement_type == 'summary':
+            YAHOO_URL = self._BASE_YAHOO_URL + up_ticker + '?p=' + up_ticker
+        else:
+            YAHOO_URL = self._BASE_YAHOO_URL + up_ticker + '/' + self.YAHOO_FINANCIAL_TYPES[statement_type][0] + '?p=' + up_ticker
+        
         if tech_type == '' and statement_type != 'history':
             try:
                 re_data = self._scrape_data(YAHOO_URL, tech_type, statement_type)
@@ -487,6 +489,8 @@ class YahooFinanceETL(object):
     def get_stock_tech_data(self, tech_type):
         if tech_type == 'defaultKeyStatistics':
             return self.get_stock_data(statement_type='keystats', tech_type=tech_type)
+        elif tech_type == 'summaryProfile':
+            return self.get_stock_data(statement_type='summary', tech_type=tech_type)
         else:
             return self.get_stock_data(tech_type=tech_type)
 
@@ -887,3 +891,9 @@ class YahooFinancials(YahooFinanceETL):
                 else:
                     ret_obj.update({tick: None})
             return ret_obj
+
+    def get_profile_data(self, reformat=True):
+        if reformat:
+            return self.get_clean_data(self.get_stock_tech_data('summaryProfile'), 'summaryProfile')
+        else:
+            return self.get_stock_tech_data('summaryProfile')
