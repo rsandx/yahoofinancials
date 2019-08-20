@@ -86,6 +86,7 @@ class YahooFinanceETL(object):
         'income': ['financials', 'incomeStatementHistory', 'incomeStatementHistoryQuarterly'],
         'balance': ['balance-sheet', 'balanceSheetHistory', 'balanceSheetHistoryQuarterly', 'balanceSheetStatements'],
         'cash': ['cash-flow', 'cashflowStatementHistory', 'cashflowStatementHistoryQuarterly', 'cashflowStatements'],
+        'holders': ['holders', 'majorHoldersBreakdown', 'netSharePurchaseActivity', 'institutionOwnership', 'fundOwnership', 'insiderTransactions'],
         'keystats': ['key-statistics'],
         'history': ['history']
     }
@@ -171,9 +172,10 @@ class YahooFinanceETL(object):
     # Private static method to determine if a numerical value is in the data object being cleaned
     @staticmethod
     def _determine_numeric_value(value_dict):
-        numerical_val = None
-        if type(value_dict) is dict and 'raw' in value_dict.keys():
+        if isinstance(value_dict, dict) and 'raw' in value_dict.keys():
             numerical_val = value_dict['raw']
+        else:
+            numerical_val = None
         return numerical_val
 
     # Private method to format date serial string to readable format and vice versa
@@ -184,16 +186,30 @@ class YahooFinanceETL(object):
 
     # Private method to return the a sub dictionary entry for the earning report cleaning
     def _get_cleaned_sub_dict_ent(self, key, val_list):
+        if len(val_list) == 0:
+            return {key: None}
         sub_list = []
         for rec in val_list:
             sub_sub_dict = {}
             for k, v in rec.items():
                 if k == 'date':
                     sub_sub_dict_ent = {k: v}
+                elif 'Date' in k:
+                    try:
+                        formatted_date = v['fmt']
+                    except (KeyError, TypeError):
+                        formatted_date = '-'
+                    sub_sub_dict_ent = {k: formatted_date}
+                elif v is None or isinstance(v, str) or isinstance(v, int) or isinstance(v, float):
+                    sub_sub_dict_ent = {k: v}
+                # Python 2 and Unicode
+                elif sys.version_info < (3, 0) and isinstance(v, unicode):
+                    sub_sub_dict_ent = {k: v}
                 else:
                     numerical_val = self._determine_numeric_value(v)
                     sub_sub_dict_ent = {k: numerical_val}
-                sub_sub_dict.update(sub_sub_dict_ent)
+                if k != 'maxAge':    
+                    sub_sub_dict.update(sub_sub_dict_ent)
             sub_list.append(sub_sub_dict)
         sub_ent = {key: sub_list}
         return sub_ent
@@ -236,9 +252,11 @@ class YahooFinanceETL(object):
         if raw_data is None:
             return None
         for k, v in raw_data.items():
-            if 'Time' in k:
-                formatted_utc_time = self._format_time(v)
-                dict_ent = {k: formatted_utc_time}
+            if isinstance(v, list):
+                dict_ent = self._get_cleaned_sub_dict_ent(k, v)
+            #elif 'Time' in k:
+            #    formatted_utc_time = self._format_time(v)
+            #    dict_ent = {k: formatted_utc_time}
             elif 'Date' in k:
                 try:
                     formatted_date = v['fmt']
@@ -253,7 +271,8 @@ class YahooFinanceETL(object):
             else:
                 numerical_val = self._determine_numeric_value(v)
                 dict_ent = {k: numerical_val}
-            cleaned_dict.update(dict_ent)
+            if k != 'maxAge':    
+                cleaned_dict.update(dict_ent)
         return cleaned_dict
 
     # Private Static Method to ensure ticker is URL encoded
@@ -489,8 +508,10 @@ class YahooFinanceETL(object):
     def get_stock_tech_data(self, tech_type):
         if tech_type == 'defaultKeyStatistics':
             return self.get_stock_data(statement_type='keystats', tech_type=tech_type)
-        elif tech_type == 'summaryProfile':
+        elif tech_type in ['summaryProfile', 'summaryDetail']:
             return self.get_stock_data(statement_type='summary', tech_type=tech_type)
+        elif tech_type in ['majorHoldersBreakdown', 'netSharePurchaseActivity', 'institutionOwnership', 'fundOwnership', 'insiderTransactions']:
+            return self.get_stock_data(statement_type='holders', tech_type=tech_type)
         else:
             return self.get_stock_data(tech_type=tech_type)
 
@@ -897,3 +918,33 @@ class YahooFinancials(YahooFinanceETL):
             return self.get_clean_data(self.get_stock_tech_data('summaryProfile'), 'summaryProfile')
         else:
             return self.get_stock_tech_data('summaryProfile')
+
+    def get_major_holders(self, reformat=True):
+        if reformat:
+            return self.get_clean_data(self.get_stock_tech_data('majorHoldersBreakdown'), 'majorHoldersBreakdown')
+        else:
+            return self.get_stock_tech_data('majorHoldersBreakdown')
+
+    def get_purchase_activity(self, reformat=True):
+        if reformat:
+            return self.get_clean_data(self.get_stock_tech_data('netSharePurchaseActivity'), 'netSharePurchaseActivity')
+        else:
+            return self.get_stock_tech_data('netSharePurchaseActivity')
+
+    def get_institution_ownership(self, reformat=True):
+        if reformat:
+            return self.get_clean_data(self.get_stock_tech_data('institutionOwnership'), 'institutionOwnership')
+        else:
+            return self.get_stock_tech_data('institutionOwnership')
+
+    def get_fund_ownership(self, reformat=True):
+        if reformat:
+            return self.get_clean_data(self.get_stock_tech_data('fundOwnership'), 'fundOwnership')
+        else:
+            return self.get_stock_tech_data('fundOwnership')
+
+    def get_insider_transactions(self, reformat=True):
+        if reformat:
+            return self.get_clean_data(self.get_stock_tech_data('insiderTransactions'), 'insiderTransactions')
+        else:
+            return self.get_stock_tech_data('insiderTransactions')
